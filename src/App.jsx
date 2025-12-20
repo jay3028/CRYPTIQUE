@@ -4,7 +4,7 @@ const App = () => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [isHovering, setIsHovering] = useState(false)
   const [activeButton, setActiveButton] = useState(null)
-  const [scrollRevealed, setScrollRevealed] = useState(0) // Track which models are revealed by scroll
+  const [scrollRevealed, setScrollRevealed] = useState(1) // Track which models are revealed by scroll, default to 1
   const designSectionRef = useRef(null)
   
   // Geometric design states
@@ -18,6 +18,12 @@ const App = () => {
   const [orbitalSmoothPosition, setOrbitalSmoothPosition] = useState({ x: 0, y: 0 })
   const orbitalContainerRef = useRef(null)
   const orbitalAnimationFrameRef = useRef(null)
+  
+  // Sphere design states
+  const [sphereMousePosition, setSphereMousePosition] = useState({ x: 0, y: 0 })
+  const [sphereSmoothPosition, setSphereSmoothPosition] = useState({ x: 0, y: 0 })
+  const sphereContainerRef = useRef(null)
+  const sphereAnimationFrameRef = useRef(null)
   
   // Handle button clicks
   const handleButtonClick = (buttonIndex) => {
@@ -89,6 +95,32 @@ const App = () => {
     }
   }, [orbitalMousePosition])
 
+  // Smooth mouse following for sphere design
+  useEffect(() => {
+    const updateSphereSmoothPosition = () => {
+      setSphereSmoothPosition(prev => {
+        const lagFactor = 0.12
+        const dx = (sphereMousePosition.x - prev.x) * lagFactor
+        const dy = (sphereMousePosition.y - prev.y) * lagFactor
+        
+        return {
+          x: prev.x + dx,
+          y: prev.y + dy
+        }
+      })
+      
+      sphereAnimationFrameRef.current = requestAnimationFrame(updateSphereSmoothPosition)
+    }
+
+    sphereAnimationFrameRef.current = requestAnimationFrame(updateSphereSmoothPosition)
+    
+    return () => {
+      if (sphereAnimationFrameRef.current) {
+        cancelAnimationFrame(sphereAnimationFrameRef.current)
+      }
+    }
+  }, [sphereMousePosition])
+
   // Mouse tracking for geometric design
   const handleGeometricMouseMove = (e) => {
     if (!geometricContainerRef.current) return
@@ -146,38 +178,106 @@ const App = () => {
     setOrbitalMousePosition({ x: 0, y: 0 })
   }
 
-  // Scroll detection for sequential model reveal
+  // Mouse tracking for sphere design
+  const handleSphereMouseMove = (e) => {
+    if (!sphereContainerRef.current) return
+    
+    const rect = sphereContainerRef.current.getBoundingClientRect()
+    const centerX = rect.left + rect.width / 2
+    const centerY = rect.top + rect.height / 2
+    
+    const deltaX = e.clientX - centerX
+    const deltaY = e.clientY - centerY
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+    
+    if (distance < 400) {
+      setSphereMousePosition({
+        x: deltaX * 0.25,
+        y: deltaY * 0.25
+      })
+    } else {
+      setSphereMousePosition({ x: 0, y: 0 })
+    }
+  }
+
+  const handleSphereMouseLeave = () => {
+    setSphereMousePosition({ x: 0, y: 0 })
+  }
+
+  // Scroll detection for sequential model reveal with smooth staggered animations
   useEffect(() => {
     const handleScroll = () => {
-      if (!designSectionRef.current) return
+      if (!designSectionRef.current || activeButton !== null) return
       
       const sectionTop = designSectionRef.current.offsetTop
       const sectionHeight = designSectionRef.current.offsetHeight
-      const scrollPosition = window.scrollY + window.innerHeight
-      const sectionBottom = sectionTop + sectionHeight
+      const viewportHeight = window.innerHeight
+      const scrollY = window.scrollY
       
-      // Only trigger if we're in the design section area and no button is active
-      if (scrollPosition > sectionTop && scrollPosition < sectionBottom && activeButton === null) {
-        const scrollProgress = (scrollPosition - sectionTop) / sectionHeight
-        
-        if (scrollProgress > 0.2 && scrollRevealed < 1) {
-          setScrollRevealed(1)
-        } else if (scrollProgress > 0.5 && scrollRevealed < 2) {
-          setScrollRevealed(2)
-        } else if (scrollProgress > 0.8 && scrollRevealed < 3) {
-          setScrollRevealed(3)
-        }
+      // Calculate when section enters viewport
+      const sectionEnterPoint = sectionTop - viewportHeight
+      const scrollProgress = Math.max(0, Math.min(1, (scrollY - sectionEnterPoint) / (sectionHeight + viewportHeight)))
+      
+      // Staggered reveal thresholds for smooth sequential animation
+      // Design 1: visible by default (0-33% scroll)
+      // Design 2: reveal at 33% scroll progress
+      // Design 3: reveal at 66% scroll progress
+      
+      if (scrollProgress >= 0.66 && scrollRevealed < 3) {
+        setScrollRevealed(3)
+      } else if (scrollProgress >= 0.33 && scrollRevealed < 2) {
+        setScrollRevealed(2)
+      } else if (scrollProgress >= 0 && scrollRevealed < 1) {
+        setScrollRevealed(1)
       }
     }
 
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
+    // Initial check on mount
+    handleScroll()
+    
+    // Throttle scroll events for better performance
+    let ticking = false
+    const throttledHandleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          handleScroll()
+          ticking = false
+        })
+        ticking = true
+      }
+    }
+
+    window.addEventListener('scroll', throttledHandleScroll, { passive: true })
+    window.addEventListener('resize', handleScroll)
+    
+    return () => {
+      window.removeEventListener('scroll', throttledHandleScroll)
+      window.removeEventListener('resize', handleScroll)
+    }
   }, [scrollRevealed, activeButton])
 
-  // Reset scroll reveal when button is clicked
+  // Reset scroll reveal when button is clicked, restore to default when button is released
   useEffect(() => {
     if (activeButton !== null) {
-      setScrollRevealed(0)
+      // Keep current scroll reveal when button is active
+    } else {
+      // When button is released, check scroll position to restore appropriate design
+      if (designSectionRef.current) {
+        const sectionTop = designSectionRef.current.offsetTop
+        const sectionHeight = designSectionRef.current.offsetHeight
+        const viewportHeight = window.innerHeight
+        const scrollY = window.scrollY
+        const sectionEnterPoint = sectionTop - viewportHeight
+        const scrollProgress = Math.max(0, Math.min(1, (scrollY - sectionEnterPoint) / (sectionHeight + viewportHeight)))
+        
+        if (scrollProgress >= 0.66) {
+          setScrollRevealed(3)
+        } else if (scrollProgress >= 0.33) {
+          setScrollRevealed(2)
+        } else {
+          setScrollRevealed(1)
+        }
+      }
     }
   }, [activeButton])
 
@@ -186,7 +286,7 @@ const App = () => {
     if (activeButton !== null) {
       return activeButton // Button click takes priority
     }
-    return scrollRevealed // Otherwise use scroll reveal
+    return scrollRevealed || 1 // Default to design 1 if no scroll reveal
   }
 
   const visibleModel = getVisibleModel()
@@ -457,7 +557,8 @@ const App = () => {
                     : 'scale(0.95) translateZ(0)',
                   zIndex: visibleModel === 1 ? (activeButton === 1 ? 30 : 20) : 1,
                   pointerEvents: visibleModel === 1 ? 'auto' : 'none',
-                  willChange: 'transform, opacity'
+                  willChange: 'transform, opacity',
+                  transitionDelay: '0ms'
                 }}
               >
               <div 
@@ -679,7 +780,8 @@ const App = () => {
                     : 'scale(0.95) translateZ(0)',
                   zIndex: visibleModel === 2 ? (activeButton === 2 ? 30 : 20) : 1,
                   pointerEvents: visibleModel === 2 ? 'auto' : 'none',
-                  willChange: 'transform, opacity'
+                  willChange: 'transform, opacity',
+                  transitionDelay: visibleModel === 2 && activeButton === null ? '200ms' : '0ms'
                 }}
               >
               <div 
@@ -867,10 +969,16 @@ const App = () => {
                     : 'scale(0.95) translateZ(0)',
                   zIndex: visibleModel === 3 ? (activeButton === 3 ? 30 : 20) : 1,
                   pointerEvents: visibleModel === 3 ? 'auto' : 'none',
-                  willChange: 'transform, opacity'
+                  willChange: 'transform, opacity',
+                  transitionDelay: visibleModel === 3 && activeButton === null ? '400ms' : '0ms'
                 }}
               >
-              <div className="w-full h-[600px] flex items-center justify-center overflow-hidden relative">
+              <div 
+                ref={sphereContainerRef}
+                className="w-full h-[600px] flex items-center justify-center overflow-hidden relative"
+                onMouseMove={handleSphereMouseMove}
+                onMouseLeave={handleSphereMouseLeave}
+              >
                 {/* Subtle dot grid background */}
                 <div 
                   className="absolute inset-0 pointer-events-none" 
@@ -904,7 +1012,8 @@ const App = () => {
                     position: 'absolute',
                     left: '50%',
                     top: '50%',
-                    transform: 'translate(-50%, -50%)'
+                    transform: `translate(calc(-50% + ${sphereSmoothPosition.x}px), calc(-50% + ${sphereSmoothPosition.y}px))`,
+                    willChange: 'transform'
                   }}
                 >
                   <defs>
@@ -1022,6 +1131,225 @@ const App = () => {
               </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* New Design Section - Build Beyond Limits */}
+      <section className="w-full py-20 px-8 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="w-full flex">
+            {/* Left Side - Feature List */}
+            <div className="w-1/4 flex flex-col justify-center pr-12">
+              <div className="h-full flex flex-col justify-center space-y-6 border-l-2 border-gray-300 pl-8">
+                <div className="text-sm font-light text-gray-400 uppercase tracking-wide">
+                  / UNPARALLELED PERFORMANCE
+                </div>
+                <div className="text-sm font-light text-gray-400 uppercase tracking-wide">
+                  / PLUG AND PLAY
+                </div>
+                <div className="text-sm font-light text-gray-400 uppercase tracking-wide">
+                  / TRUE DECENTRALIZATION
+                </div>
+              </div>
+            </div>
+
+            {/* Right Side - Main Slogan */}
+            <div className="w-3/4 flex items-center justify-center">
+              <div className="text-center">
+                <h2 className="text-6xl md:text-7xl font-bold text-gray-900 leading-tight mb-4">
+                  Build beyond limits.
+                </h2>
+                <h2 className="text-6xl md:text-7xl font-bold text-gray-900 leading-tight">
+                  Scale <span className="italic">without</span> compromise.
+                </h2>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Venn Diagram Section - Security, Decentralization, Scalability */}
+      <section className="w-full py-32 px-8 bg-gray-50 relative overflow-hidden">
+        {/* Subtle dotted grid background */}
+        <div 
+          className="absolute inset-0 pointer-events-none" 
+          style={{
+            backgroundImage: 'radial-gradient(circle, rgba(42, 42, 42, 0.15) 1px, transparent 1px)',
+            backgroundSize: '20px 20px',
+            backgroundPosition: '0 0'
+          }} 
+        />
+
+        {/* Menu indicator on right edge */}
+        <div className="absolute top-12 right-12 flex flex-col gap-1.5 pointer-events-none">
+          <div className="w-6 h-0.5 bg-gray-400"></div>
+          <div className="w-8 h-0.5 bg-gray-600"></div>
+          <div className="w-6 h-0.5 bg-gray-400"></div>
+          <div className="w-6 h-0.5 bg-gray-400"></div>
+          <div className="w-6 h-0.5 bg-gray-400"></div>
+        </div>
+
+        <div className="max-w-6xl mx-auto relative z-10">
+          <div className="flex items-center justify-center" style={{ minHeight: '600px' }}>
+            <svg 
+              width="800" 
+              height="650" 
+              viewBox="0 -50 800 650"
+              style={{ maxWidth: '100%', height: 'auto' }}
+            >
+              <defs>
+                {/* Security circle gradient - light blue to cyan */}
+                <radialGradient id="securityGradient" cx="50%" cy="50%">
+                  <stop offset="0%" stopColor="#87CEEB" stopOpacity="0.6" />
+                  <stop offset="100%" stopColor="#00CED1" stopOpacity="0.4" />
+                </radialGradient>
+
+                {/* Decentralization circle gradient - pink to magenta */}
+                <radialGradient id="decentralizationGradient" cx="50%" cy="50%">
+                  <stop offset="0%" stopColor="#FFB6E1" stopOpacity="0.6" />
+                  <stop offset="100%" stopColor="#FF69B4" stopOpacity="0.4" />
+                </radialGradient>
+
+                {/* Scalability circle gradient - purple to indigo */}
+                <radialGradient id="scalabilityGradient" cx="50%" cy="50%">
+                  <stop offset="0%" stopColor="#9370DB" stopOpacity="0.6" />
+                  <stop offset="100%" stopColor="#4B0082" stopOpacity="0.4" />
+                </radialGradient>
+              </defs>
+
+              {/* Security Circle - Top */}
+              <g>
+                <circle
+                  cx="400"
+                  cy="200"
+                  r="180"
+                  fill="url(#securityGradient)"
+                  stroke="#000000"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 4"
+                  strokeDashoffset="0"
+                  opacity="0.9"
+                >
+                  <animate
+                    attributeName="stroke-dashoffset"
+                    values="0;8"
+                    dur="0.8s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+                {/* Label line - from top of circle to label */}
+                <line
+                  x1="400"
+                  y1="20"
+                  x2="400"
+                  y2="-20"
+                  stroke="#000000"
+                  strokeWidth="1"
+                />
+                {/* Label */}
+                <text
+                  x="400"
+                  y="-30"
+                  textAnchor="middle"
+                  fontSize="14"
+                  fontFamily="sans-serif"
+                  fontWeight="600"
+                  fill="#000000"
+                  letterSpacing="2px"
+                >
+                  SECURITY
+                </text>
+              </g>
+
+              {/* Decentralization Circle - Bottom Left */}
+              <g>
+                <circle
+                  cx="250"
+                  cy="450"
+                  r="180"
+                  fill="url(#decentralizationGradient)"
+                  stroke="#000000"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 4"
+                  strokeDashoffset="0"
+                  opacity="0.9"
+                >
+                  <animate
+                    attributeName="stroke-dashoffset"
+                    values="0;-8"
+                    dur="1s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+                {/* Label line - from bottom of circle to label */}
+                <line
+                  x1="70"
+                  y1="630"
+                  x2="70"
+                  y2="600"
+                  stroke="#000000"
+                  strokeWidth="1"
+                />
+                {/* Label */}
+                <text
+                  x="70"
+                  y="590"
+                  textAnchor="middle"
+                  fontSize="14"
+                  fontFamily="sans-serif"
+                  fontWeight="600"
+                  fill="#000000"
+                  letterSpacing="2px"
+                >
+                  DECENTRALIZATION
+                </text>
+              </g>
+
+              {/* Scalability Circle - Bottom Right */}
+              <g>
+                <circle
+                  cx="550"
+                  cy="450"
+                  r="180"
+                  fill="url(#scalabilityGradient)"
+                  stroke="#000000"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 4"
+                  strokeDashoffset="0"
+                  opacity="0.9"
+                >
+                  <animate
+                    attributeName="stroke-dashoffset"
+                    values="0;8"
+                    dur="1.2s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+                {/* Label line - from bottom of circle to label */}
+                <line
+                  x1="730"
+                  y1="630"
+                  x2="730"
+                  y2="600"
+                  stroke="#000000"
+                  strokeWidth="1"
+                />
+                {/* Label */}
+                <text
+                  x="730"
+                  y="590"
+                  textAnchor="middle"
+                  fontSize="14"
+                  fontFamily="sans-serif"
+                  fontWeight="600"
+                  fill="#000000"
+                  letterSpacing="2px"
+                >
+                  SCALABILITY
+                </text>
+              </g>
+            </svg>
           </div>
         </div>
       </section>
