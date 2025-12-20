@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 const App = () => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [isHovering, setIsHovering] = useState(false)
+  const [activeButton, setActiveButton] = useState(null)
   
   // Geometric design states
   const [geometricMousePosition, setGeometricMousePosition] = useState({ x: 0, y: 0 })
@@ -15,6 +16,15 @@ const App = () => {
   const [orbitalSmoothPosition, setOrbitalSmoothPosition] = useState({ x: 0, y: 0 })
   const orbitalContainerRef = useRef(null)
   const orbitalAnimationFrameRef = useRef(null)
+  
+  // Handle button clicks
+  const handleButtonClick = (buttonIndex) => {
+    if (activeButton === buttonIndex) {
+      setActiveButton(null) // Toggle off if already active
+    } else {
+      setActiveButton(buttonIndex)
+    }
+  }
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -293,7 +303,7 @@ const App = () => {
         </div>
       </section>
 
-      {/* Geometric Design Section - Right Half */}
+      {/* Content and Geometric Design Section */}
       <section className="w-full pt-0 pb-16 px-8 bg-gray-100 relative">
         <style>{`
           @keyframes dashLoop {
@@ -324,11 +334,71 @@ const App = () => {
           }
         `}</style>
         
-        {/* Container for right half positioning */}
-        <div className="w-full flex justify-end">
+        {/* Container for left and right halves */}
+        <div className="w-full flex">
+          {/* Left Side - Content Design */}
+          <div className="w-1/2 flex items-center justify-center px-12 pt-0 pb-16" style={{ transform: 'translateY(-190px)' }}>
+            <div className="max-w-lg">
+              <h2 className="text-5xl md:text-6xl font-bold mb-6 text-gray-900 leading-tight">
+                Fast, familiar, frictionless
+              </h2>
+              <p className="text-lg text-gray-700 mb-8 leading-relaxed">
+                No more high fees or long waits. Apps on Monad feel instant, cost pennies, and work with the wallets and tools you already know and love.
+              </p>
+              <button className="px-6 py-3 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors uppercase tracking-wide">
+                READ THE DOCUMENTATION
+              </button>
+              
+              {/* Divider */}
+              <div className="my-12 border-t border-gray-200"></div>
+              
+              {/* Numbered Items */}
+              <div className="space-y-8">
+                <button 
+                  onClick={() => handleButtonClick(1)}
+                  className={`w-full flex items-center gap-4 hover:opacity-70 transition-all cursor-pointer text-left ${
+                    activeButton === 1 ? 'opacity-100 scale-105' : ''
+                  }`}
+                >
+                  <span className="text-2xl font-bold text-gray-900">1</span>
+                  <div className="flex-1 h-px bg-gray-300"></div>
+                  <span className="text-sm font-medium text-gray-700 uppercase tracking-wide">FAST, FAMILIAR, FRICTIONLESS</span>
+                </button>
+                <button 
+                  onClick={() => handleButtonClick(2)}
+                  className={`w-full flex items-center gap-4 hover:opacity-70 transition-all cursor-pointer text-left ${
+                    activeButton === 2 ? 'opacity-100 scale-105' : ''
+                  }`}
+                >
+                  <span className="text-2xl font-bold text-gray-900">2</span>
+                  <div className="flex-1 h-px bg-gray-300"></div>
+                  <span className="text-sm font-medium text-gray-700 uppercase tracking-wide">DECENTRALIZED BY DESIGN</span>
+                </button>
+                <button 
+                  onClick={() => handleButtonClick(3)}
+                  className={`w-full flex items-center gap-4 hover:opacity-70 transition-all cursor-pointer text-left ${
+                    activeButton === 3 ? 'opacity-100 scale-105' : ''
+                  }`}
+                >
+                  <span className="text-2xl font-bold text-gray-900">3</span>
+                  <div className="flex-1 h-px bg-gray-300"></div>
+                  <span className="text-sm font-medium text-gray-700 uppercase tracking-wide">COMMUNITY AT ITS CORE</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {/* Right Side - Geometric Design */}
           <div 
-            className="w-1/2 relative"
-            style={{ backgroundColor: '#fefefe' }}
+            className={`w-1/2 relative transition-all duration-500 ease-out ${
+              activeButton === 1 ? 'ring-4 ring-gray-400 shadow-2xl' : ''
+            }`}
+            style={{ 
+              backgroundColor: '#fefefe', 
+              marginRight: '-30px',
+              transform: activeButton === 1 ? 'scale(1.1)' : 'scale(1)',
+              zIndex: activeButton === 1 ? 10 : 1
+            }}
           >
             {/* First Design - Geometric Squares */}
             <div 
